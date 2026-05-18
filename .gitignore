@@ -1,0 +1,26 @@
+# Large / legacy trees (not needed for v3.1.1 CI build)
+mp42gif/
+Source_Code_v2.7_Lite_Official/
+Source_Code_v2.7_Official/
+_archive_exe/
+
+# Prebuilt binaries at repo root
+*.exe
+
+# Build outputs
+V3/build/
+V3/dist/
+
+# Bundled CLI (CI installs via Homebrew)
+V3/tools/*
+!V3/tools/README_MAC_TOOLS.md
+
+V3/__pycache__/
+**/__pycache__/
+*.pyc
+*.bak
+.DS_Store
+Thumbs.db
+
+# Optional local settings (keep presets if you want them shared)
+# V3/app_settings.json

@@ -1,0 +1,22 @@
+{
+    "target": 16.0,
+    "format": "GIF",
+    "low": 1.5,
+    "up": 0.5,
+    "prio": "Balanced",
+    "mode": "ITERATIVE",
+    "fps": 15,
+    "qual": 90,
+    "play_once": false,
+    "fast": false,
+    "alpha": false,
+    "lossless": false,
+    "trim_start": "00:00:00",
+    "trim_end": "",
+    "keep_iterations": false,
+    "name_settings": true,
+    "dim_mode": "Original",
+    "dim_perc": 100,
+    "dim_w": 640,
+    "dim_h": 360
+}

@@ -1,0 +1,108 @@
+# Build MakeAGIF v3.1.1 for macOS Apple Silicon → Artifact + GitHub Release (download link).
+#
+# Permanent download URL (after a successful run):
+#   https://github.com/<owner>/MakeAGif-Webp/releases/download/v3.1.1-macos/MakeAGIF-v3.1.1-macOS-arm64.zip
+
+name: Build MakeAGIF (macOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "V3/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: "3.1.1"
+  RELEASE_TAG: "v3.1.1-macos"
+  V3_DIR: V3
+  ZIP_NAME: MakeAGIF-v3.1.1-macOS-arm64.zip
+
+jobs:
+  build-macos-arm64:
+    name: macOS Apple Silicon (.app)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ${{ env.V3_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ffmpeg and gifski (Homebrew)
+        run: |
+          brew install ffmpeg gifski
+          mkdir -p tools
+          FF="$(brew --prefix ffmpeg)"
+          cp "$FF/bin/ffmpeg" "$FF/bin/ffprobe" tools/
+          cp "$(command -v gifski)" tools/gifski
+          chmod +x tools/ffmpeg tools/ffprobe tools/gifski
+          file tools/ffmpeg tools/ffprobe tools/gifski
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pillow
+
+      - name: Prepare icons (placeholder if not in repo)
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          if Path("MakeAGIF.ico").exists():
+              print("MakeAGIF.ico already present")
+          else:
+              from PIL import Image, ImageDraw
+              im = Image.new("RGBA", (256, 256), (37, 160, 255, 255))
+              d = ImageDraw.Draw(im)
+              d.rounded_rectangle([32, 32, 224, 224], radius=40, fill=(20, 20, 30, 255))
+              im.save("MakeAGIF.ico", format="ICO", sizes=[(256, 256), (48, 48), (32, 32), (16, 16)])
+              im.resize((512, 512), Image.LANCZOS).save("icon_512.png")
+              print("Created placeholder MakeAGIF.ico + icon_512.png")
+          PY
+          chmod +x _make_icns_mac.sh
+          ./_make_icns_mac.sh || true
+
+      - name: Build .app with PyInstaller
+        run: python -m PyInstaller --noconfirm MakeAGIF_v3.1.1_mac.spec
+
+      - name: Zip .app for download
+        run: |
+          cd dist
+          zip -ry "../${{ env.ZIP_NAME }}" "MakeAGIF v${{ env.APP_VERSION }}.app"
+          ls -lh "../${{ env.ZIP_NAME }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MakeAGIF-v${{ env.APP_VERSION }}-macOS-arm64
+          path: ${{ env.V3_DIR }}/${{ env.ZIP_NAME }}
+          retention-days: 90
+
+      - name: Publish GitHub Release (permanent download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: MakeAGIF v${{ env.APP_VERSION }} — macOS Apple Silicon
+          body: |
+            Automated build from commit `${{ github.sha }}` (workflow run ${{ github.run_number }}).
+
+            **Install:** unzip, move `MakeAGIF v${{ env.APP_VERSION }}.app` to Applications.
+            **First launch:** Right-click → Open if Gatekeeper blocks unsigned apps.
+
+            Includes bundled ffmpeg, ffprobe, and gifski (arm64).
+          files: ${{ env.V3_DIR }}/${{ env.ZIP_NAME }}
+          prerelease: true
+          make_latest: true
+
+      - name: Print download URLs
+        run: |
+          echo "Release page: https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }}"
+          echo "Direct ZIP:   https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/${{ env.ZIP_NAME }}"
