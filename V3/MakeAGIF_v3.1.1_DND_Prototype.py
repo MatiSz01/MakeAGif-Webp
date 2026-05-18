@@ -45,6 +45,8 @@
 # v3.1.1 patch:
 #   * Trim dialog: frame-exact preview decodes off the UI thread; timeline
 #     scrub debounced; resize debounced; coalesced decode queue on rapid seeks.
+#   * macOS bundle matches Windows tools/: ffmpeg, ffprobe, gifski, magick (CI).
+#   * MAGICK_PATH only set when magick exists on disk (WebP+alpha parity).
 #
 # Inherits everything from v3.0:
 #   - Iterative search engine with persistent knowledge cache
@@ -1012,6 +1014,15 @@ def get_tool_path(name):
     return fname
 
 
+def get_optional_tool_path(name):
+    """Like get_tool_path but returns None if the tool is not bundled/found on disk.
+
+    Use for optional tools (ImageMagick) so we never treat the bare name
+    'magick' as available when only PATH might resolve it inconsistently."""
+    p = get_tool_path(name)
+    return p if os.path.isfile(p) else None
+
+
 def open_path_in_os(path):
     """Cross-platform "open this folder/file in the OS file manager / default
     app". Centralized so we don't sprinkle os.name/sys.platform branches
@@ -1033,7 +1044,7 @@ FFPROBE_PATH = get_tool_path("ffprobe")  # used for VFR detection (ffmpeg
                                           # stderr doesn't expose r/avg
                                           # frame rate separately)
 GIFSKI_PATH = get_tool_path("gifski")
-MAGICK_PATH = get_tool_path("magick")    # Optional
+MAGICK_PATH = get_optional_tool_path("magick")  # WebP+alpha (same as Windows bundle)
 
 
 def _parse_rational(s):

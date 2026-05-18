@@ -37,15 +37,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install ffmpeg and gifski (Homebrew)
+      - name: Bundle CLI tools (parity with Windows tools/)
         run: |
-          brew install ffmpeg gifski
-          mkdir -p tools
-          FF="$(brew --prefix ffmpeg)"
-          cp "$FF/bin/ffmpeg" "$FF/bin/ffprobe" tools/
-          cp "$(command -v gifski)" tools/gifski
-          chmod +x tools/ffmpeg tools/ffprobe tools/gifski
-          file tools/ffmpeg tools/ffprobe tools/gifski
+          chmod +x ci_bundle_mac_tools.sh
+          ./ci_bundle_mac_tools.sh
 
       - name: Install Python dependencies
         run: |
@@ -97,7 +92,7 @@ jobs:
             **Install:** unzip, move `MakeAGIF v${{ env.APP_VERSION }}.app` to Applications.
             **First launch:** Right-click → Open if Gatekeeper blocks unsigned apps.
 
-            Includes bundled ffmpeg, ffprobe, and gifski (arm64).
+            Bundled tools (arm64, same set as Windows): ffmpeg, ffprobe, gifski, magick (ImageMagick).
           files: ${{ env.V3_DIR }}/${{ env.ZIP_NAME }}
           prerelease: true
           make_latest: true

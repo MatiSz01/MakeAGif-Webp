@@ -4,8 +4,9 @@ Source_Code_v2.7_Lite_Official/
 Source_Code_v2.7_Official/
 _archive_exe/
 
-# Prebuilt binaries at repo root
+# Prebuilt binaries / release zips at repo root
 *.exe
+*.zip
 
 # Build outputs
 V3/build/

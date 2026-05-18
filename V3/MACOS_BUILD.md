@@ -10,7 +10,7 @@ Si no tenés una Mac, podés compilar en la nube igual que otros proyectos tuyos
 
 El `.exe` de Windows seguís compilándolo en tu PC con `MakeAGIF_v3.1.1_win.spec` (o el spec 3.1 clásico).
 
-El workflow instala **ffmpeg** y **gifski** en el runner (Homebrew en Mac, Chocolatey + release de GitHub en Windows). No hace falta commitear los binarios de `tools/`.
+El workflow instala **ffmpeg**, **gifski** e **ImageMagick** (`magick`) en el runner — el mismo conjunto que el `.exe` de Windows (`tools/ffmpeg.exe`, `ffprobe.exe`, `gifski.exe`, `magick.exe`). No hace falta commitear los binarios de `tools/`.
 
 **Monorepo:** si tu git root es `_PERSONAL_TOOLS` (padre de `MakeAGif-Webp`), editá en `.github/workflows/build.yml` la variable `V3_DIR`:
 
@@ -40,7 +40,7 @@ y mové el workflow a la raíz del monorepo: `_PERSONAL_TOOLS/.github/workflows/
 
 1. **macOS** en Apple Silicon (arm64).
 2. **Python 3.11+** nativo arm64 (`python3 -c "import platform; print(platform.machine())"` → `arm64`).
-3. Carpeta **`V3/tools/`** con `ffmpeg`, `ffprobe`, `gifski` ejecutables (ver `tools/README_MAC_TOOLS.md`).
+3. Carpeta **`V3/tools/`** con `ffmpeg`, `ffprobe`, `gifski`, `magick` (o `./ci_bundle_mac_tools.sh`).
 4. Opcional: `MakeAGIF.ico` (`python3 _make_icon.py` si tenés el PNG fuente).
 5. Opcional: `MakeAGIF.icns` para icono en Finder (`./_make_icns_mac.sh`).
 
@@ -69,7 +69,7 @@ Sin firma Apple, macOS puede bloquear la app. Para uso personal: **clic derecho 
 | | Windows | macOS |
 |---|---------|--------|
 | Formato | Un solo `.exe` (onefile) | `.app` (carpeta, onedir + BUNDLE) |
-| Tools | `ffmpeg.exe`, etc. | `ffmpeg`, `ffprobe`, `gifski` sin extensión |
+| Tools | `ffmpeg.exe`, `ffprobe.exe`, `gifski.exe`, `magick.exe` | `ffmpeg`, `ffprobe`, `gifski`, `magick` (sin extensión) |
 | Drag & drop en icono | — | `argv_emulation=True` en el spec |
 | Build desde | Tu PC actual | Solo en Mac |
 
@@ -80,6 +80,7 @@ Sin firma Apple, macOS puede bloquear la app. Para uso personal: **clic derecho 
 ## Problemas frecuentes
 
 - **“ffmpeg not found”** → faltan binarios en `tools/` o no tienen `chmod +x`.
+- **WebP con alpha distinto a Windows** → falta `tools/magick`; volvé a compilar con `./ci_bundle_mac_tools.sh` o el workflow actualizado.
 - **App no abre / se cierra** → ejecutar desde Terminal para ver errores:
   `"dist/MakeAGIF v3.1.1.app/Contents/MacOS/MakeAGIF v3.1.1"`
 - **Preview de vídeo negro** → instalar en la Mac los codecs/Qt que use el sistema; a veces hace falta probar con otro clip H.264.
