@@ -1,7 +1,7 @@
-# Build MakeAGIF v3.1.1 for macOS Apple Silicon → Artifact + GitHub Release (download link).
+# Build MakeAGIF for macOS Apple Silicon → Artifact + GitHub Release
 #
-# Permanent download URL (after a successful run):
-#   https://github.com/<owner>/MakeAGif-Webp/releases/download/v3.1.1-macos/MakeAGIF-v3.1.1-macOS-arm64.zip
+# Download (after success):
+#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.2-macos/MakeAGIF-v3.1.2-macOS-arm64.zip
 
 name: Build MakeAGIF (macOS)
 
@@ -17,10 +17,10 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "3.1.1"
-  RELEASE_TAG: "v3.1.1-macos"
+  APP_VERSION: "3.1.2"
+  RELEASE_TAG: "v3.1.2-macos"
   V3_DIR: V3
-  ZIP_NAME: MakeAGIF-v3.1.1-macOS-arm64.zip
+  ZIP_NAME: MakeAGIF-v3.1.2-macOS-arm64.zip
 
 jobs:
   build-macos-arm64:
@@ -66,7 +66,7 @@ jobs:
           ./_make_icns_mac.sh || true
 
       - name: Build .app with PyInstaller
-        run: python -m PyInstaller --noconfirm MakeAGIF_v3.1.1_mac.spec
+        run: python -m PyInstaller --noconfirm MakeAGIF_v3.1.2_mac.spec
 
       - name: Zip .app for download
         run: |
