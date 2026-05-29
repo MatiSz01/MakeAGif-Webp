@@ -16,7 +16,23 @@
 #     inside "MakeAGIF vX.app" and HAS a space) was the command — /bin/sh
 #     word-split it and failed. Now always shell=False; the tools expand the
 #     glob themselves (as they already did on Windows).
-#   * Iterative search engine, export pipeline and scene detection UNCHANGED.
+#   * UX (single mode) — after a render a modal result WINDOW (English) now
+#     states the winning params (Q / FPS / size) and clearly flags when the
+#     result was REUSED from a previous run (Smart Match cache hit) instead of
+#     freshly searched — so an instant cache copy no longer looks like "nothing
+#     happened". Being modal + non-inline, the message is gone the moment the
+#     user runs again. A "Search Again" action (dialog + drop-zone button)
+#     forces a fresh search ignoring saved iterations for that run, WITHOUT
+#     toggling "Keep iterations" (one-shot `force_reencode` param; cache still
+#     saved).
+#   * Cross-platform pass — "Open output folder" used os.startfile (Windows-only,
+#     silently failed on macOS) → now uses open_path_in_os(). Alpha-tester page
+#     opened via a malformed "file:///"+path URI on POSIX → now Path.as_uri().
+#     Monospace UI bits hardcoded "Consolas" (Windows-only) → added 'Menlo' /
+#     monospace fallback so numbers/log stay aligned on macOS; UI font gained a
+#     macOS-friendly fallback too.
+#   * Iterative search ALGORITHM, export pipeline and scene detection UNCHANGED
+#     (force_reencode only skips the cache READ side; warm-start math intact).
 #
 # v3.1.4 changelog:
 #   * Phase 2 optimization: direct FPS scaling from size factor (fewer redundant encodes).
@@ -109,6 +125,7 @@ import queue
 import base64
 import webbrowser
 import copy
+from pathlib import Path
 try:
     import cv2
     HAS_CV2 = True
@@ -1029,7 +1046,11 @@ def open_alpha_tester(filepath=None):
         with open(tester_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
-        webbrowser.open("file:///" + tester_path.replace("\\", "/"))
+        # Path.as_uri() builds a correct file:// URI on every platform
+        # (Windows drive letters AND POSIX absolute paths) — avoids the
+        # "file:///" + path hack that produced a malformed file:////... URI
+        # for macOS/Linux absolute paths.
+        webbrowser.open(Path(tester_path).as_uri())
         return True
     except Exception:
         return False
@@ -1038,7 +1059,7 @@ def open_alpha_tester(filepath=None):
 # --- Stylesheet ---
 GLOBAL_STYLE = f"""
     QMainWindow {{ background-color: {COLOR_BG}; color: {COLOR_TEXT}; }}
-    QWidget {{ font-family: 'Segoe UI', sans-serif; font-size: 11px; color: {COLOR_TEXT}; }}
+    QWidget {{ font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: {COLOR_TEXT}; }}
     
     QGroupBox {{ 
         color: {COLOR_ACCENT}; 
@@ -2223,6 +2244,17 @@ class ConversionEngine:
                         # Non-fatal: keep the original filename if the rename
                         # fails (e.g. permission glitch on a network share).
                         self.log(f"  Filename tagging failed, keeping plain name: {e}")
+                # Stash the winning params on the task so the single-mode UI can
+                # show the user exactly what won — and whether it was reused from
+                # a previous iteration (cache hit) vs freshly searched.
+                try:
+                    task.result_from_cache = bool(final_res.get("from_cache"))
+                    task.result_quality = final_res.get("quality")
+                    task.result_fps = final_res.get("fps")
+                    task.result_size = final_res.get("file_size")
+                    task.result_mode = p.get("mode")
+                except Exception:
+                    pass
                 self.signals.status_text.emit(f"DONE: {os.path.basename(final_res['file_path'])}")
                 self.signals.progress.emit(100)
                 return True, final_res['file_path']
@@ -2628,10 +2660,19 @@ class ConversionEngine:
         # generated under the same trim / alpha / lossless config —
         # mixing trims would produce wrong sizes and (worse) Tier-1
         # could copy the wrong file as the final output.
-        cache = self._build_knowledge_cache(
-            common["iter_attempts_main_folder"], common["source_basename_no_ext"],
-            w, h, ext, common["attempt_signature"],
-        ) if common.get("iter_keep") else {}
+        # "Force re-iterate" (the drop-zone button): ignore the read side of the
+        # cache for THIS run so the search runs fresh, without the user having to
+        # turn off "Keep iterations". New iterations are still written to disk.
+        force_re = bool(ui_vals.get("force_reencode"))
+        if common.get("iter_keep") and not force_re:
+            cache = self._build_knowledge_cache(
+                common["iter_attempts_main_folder"], common["source_basename_no_ext"],
+                w, h, ext, common["attempt_signature"],
+            )
+        else:
+            cache = {}
+            if force_re and common.get("iter_keep"):
+                self.log("  Force re-iterate: ignoring cached iterations — running a fresh search.")
 
         # Tier-1 perfect match: skip search entirely if a previous run already
         # produced a file in the size bracket AND matching the target FPS intent.
@@ -2650,6 +2691,7 @@ class ConversionEngine:
                 "status": "Success", "file_path": final_out_path, "file_size": tier1["size"],
                 "fps": tier1.get("fps"), "quality": tier1.get("quality"),
                 "width": w, "height": h,
+                "from_cache": True,
             }
 
         # Ceiling FPS: the absolute highest FPS worth trying (source rate,
@@ -2675,6 +2717,7 @@ class ConversionEngine:
             return {
                 "status": "Success", "file_path": final_out_path, "file_size": cache_q100_at_max["size"],
                 "quality": 100, "fps": max_fps, "width": w, "height": h,
+                "from_cache": True,
             }
 
         low_q, high_q = 40, 100
@@ -4437,7 +4480,7 @@ class TrimDialog(QDialog):
         self._trim_thumb_in.setVisible(False)
 
         _tc_edit_style = (
-            "font-size: 13px; font-family: Consolas; font-weight: bold; "
+            "font-size: 13px; font-family: Consolas, 'Menlo', monospace; font-weight: bold; "
             "padding: 2px 6px; border: 1px solid #333; border-radius: 3px; "
             "background: #1a1a2a;"
         )
@@ -4452,7 +4495,7 @@ class TrimDialog(QDialog):
         )
         self.lbl_tc = QLabel("00:00:00:00")
         self.lbl_tc.setStyleSheet(
-            "font-size: 14px; font-family: Consolas; font-weight: bold; color: #4a90e2;"
+            "font-size: 14px; font-family: Consolas, 'Menlo', monospace; font-weight: bold; color: #4a90e2;"
         )
         lbl_out_tag = QLabel("OUT")
         lbl_out_tag.setStyleSheet("font-size: 11px; font-weight: bold; color: #ff4444;")
@@ -4559,7 +4602,7 @@ class TrimDialog(QDialog):
 
         self.lbl_vol = QLabel("muted")
         self.lbl_vol.setFixedWidth(46)
-        self.lbl_vol.setStyleSheet("color: #888; font-size: 11px; font-family: Consolas;")
+        self.lbl_vol.setStyleSheet("color: #888; font-size: 11px; font-family: Consolas, 'Menlo', monospace;")
         self.lbl_vol.setAlignment(Qt.AlignCenter)
 
         self.btn_mute.clicked.connect(self._on_mute_clicked)
@@ -5448,10 +5491,10 @@ class TrimDialog(QDialog):
         self.btn_mute.setText(self._volume_icon())
         if self._is_muted:
             self.lbl_vol.setText("muted")
-            self.lbl_vol.setStyleSheet("color: #777; font-size: 11px; font-family: Consolas; font-style: italic;")
+            self.lbl_vol.setStyleSheet("color: #777; font-size: 11px; font-family: Consolas, 'Menlo', monospace; font-style: italic;")
         else:
             self.lbl_vol.setText(f"{self._last_volume}%")
-            self.lbl_vol.setStyleSheet("color: #ccc; font-size: 11px; font-family: Consolas;")
+            self.lbl_vol.setStyleSheet("color: #ccc; font-size: 11px; font-family: Consolas, 'Menlo', monospace;")
 
     def _on_mute_clicked(self):
         # Plain icon click toggles mute. We don't use a checkable QPushButton
@@ -6988,8 +7031,25 @@ class DropZoneWidget(QWidget):
             f"padding: 5px 14px; font-weight: bold;"
         )
         self.btn_open_out.hide()
+        # Search again: force a fresh iterative search that ignores the saved
+        # (cached) iterations for this run, without touching "Keep iterations".
+        # Useful when a result was reused from a previous run but the user wants
+        # the engine to actually encode and search again.
+        self.btn_reiterate = QPushButton("🔁  Search Again")
+        self.btn_reiterate.setToolTip(
+            "Run the size search again from scratch, ignoring results saved from "
+            "previous runs (does not change the 'Keep iterations' setting)."
+        )
+        self.btn_reiterate.setStyleSheet(
+            f"QPushButton {{ background: #2a2030; border: 1px solid {COLOR_ACCENT}; "
+            f"color: {COLOR_ACCENT}; border-radius: 3px; padding: 5px 14px; "
+            f"font-weight: bold; }} "
+            f"QPushButton:hover {{ background: {COLOR_ACCENT}; color: white; }}"
+        )
+        self.btn_reiterate.hide()
         bottom_row.addWidget(self.btn_change)
         bottom_row.addStretch()
+        bottom_row.addWidget(self.btn_reiterate)
         bottom_row.addWidget(self.btn_reset_status)
         bottom_row.addWidget(self.btn_open_out)
         lv.addLayout(bottom_row)
@@ -7010,6 +7070,7 @@ class DropZoneWidget(QWidget):
             f"background: {COLOR_WARNING}; color: #000; border-radius: 3px; "
             f"font-size: 10px; font-weight: bold; padding: 0 6px;"
         )
+        self.btn_reiterate.hide()
         self.btn_open_out.hide()
         self.btn_reset_status.hide()
         self._stack.setCurrentIndex(1)
@@ -7044,12 +7105,16 @@ class DropZoneWidget(QWidget):
             f"background: {COLOR_ACCENT}; color: white; border-radius: 3px; "
             f"font-size: 10px; font-weight: bold; padding: 0 6px;"
         )
+        self.btn_reiterate.hide()
         self.btn_open_out.hide()
         self.btn_reset_status.hide()
         self._stack.setCurrentIndex(1)
 
-    def mark_done(self):
-        """Show the DONE chip and open-output button."""
+    def mark_done(self, is_iterative=True):
+        """Show the DONE chip and the post-run buttons. Verbose winner / cache
+        details are surfaced by the result dialog (MainWindow), not inline, so
+        nothing lingers on the panel after the next run. ``is_iterative`` gates
+        the "Search Again" button (only meaningful for the AUTO engine)."""
         self._lbl_chip.setText("  ✅  DONE  ")
         self._lbl_chip.setStyleSheet(
             f"background: {COLOR_SUCCESS}; color: white; border-radius: 3px; "
@@ -7057,6 +7122,7 @@ class DropZoneWidget(QWidget):
         )
         self.btn_open_out.show()
         self.btn_reset_status.show()
+        self.btn_reiterate.setVisible(bool(is_iterative))
 
     def mark_failed(self):
         """Show a failure chip and the reset button so the user can retry."""
@@ -7065,6 +7131,7 @@ class DropZoneWidget(QWidget):
             f"background: {COLOR_DANGER}; color: white; border-radius: 3px; "
             f"font-size: 10px; font-weight: bold; padding: 0 6px;"
         )
+        self.btn_reiterate.hide()
         self.btn_open_out.hide()
         self.btn_reset_status.show()
 
@@ -7083,6 +7150,7 @@ class DropZoneWidget(QWidget):
             f"background: {COLOR_ACCENT}; color: white; border-radius: 3px; "
             f"font-size: 10px; font-weight: bold; padding: 0 6px;"
         )
+        self.btn_reiterate.hide()
         self.btn_open_out.hide()
         self.btn_reset_status.hide()
 
@@ -9222,7 +9290,7 @@ class MainWindow(QMainWindow):
 
         self.view = QTextEdit(); self.view.setReadOnly(True)
         self.view.setStyleSheet(
-            f"background: #0a0a0a; color: {COLOR_SUCCESS}; font-family: Consolas; "
+            f"background: #0a0a0a; color: {COLOR_SUCCESS}; font-family: Consolas, 'Menlo', monospace; "
             f"font-size: 10px; border: 1px solid {COLOR_BORDER}; border-radius: 3px;"
         )
         cwl.addWidget(self.view)
@@ -9316,6 +9384,7 @@ class MainWindow(QMainWindow):
         self.drop_zone.btn_change.clicked.connect(self.browse_single)
         self.drop_zone.btn_open_out.clicked.connect(self._open_single_output_folder)
         self.drop_zone.btn_reset_status.clicked.connect(self._reset_single_status)
+        self.drop_zone.btn_reiterate.clicked.connect(self._reiterate_single)
         self.drop_zone.file_dropped.connect(self._start_single_import)
         self.btn_clr_log.clicked.connect(self.view.clear)
         self.btn_cpy_log.clicked.connect(self.view.selectAll) # Hacky copy
@@ -10732,8 +10801,9 @@ class MainWindow(QMainWindow):
         # Post-run: jump straight to the produced file's folder.
         out_path = getattr(self.current_single_task, "output_path", None)
         if out_path and os.path.exists(out_path):
-            try: os.startfile(os.path.dirname(out_path))
-            except Exception as e: self.log(f"[ERROR] Could not open folder: {e}")
+            folder = os.path.dirname(out_path)
+            if not open_path_in_os(folder):
+                self.log(f"[ERROR] Could not open folder: {folder}")
             return
         # Pre-run: honor the global "OUTPUT DESTINATION" footer if set.
         target, err = self._resolve_output_dir()
@@ -10747,8 +10817,8 @@ class MainWindow(QMainWindow):
         else:
             target_dir = os.path.dirname(self.current_single_task.path)
         if os.path.isdir(target_dir):
-            try: os.startfile(target_dir)
-            except Exception as e: self.log(f"[ERROR] Could not open folder: {e}")
+            if not open_path_in_os(target_dir):
+                self.log(f"[ERROR] Could not open folder: {target_dir}")
 
     def start_processing(self):
         if self.worker and self.worker.isRunning():
@@ -10786,6 +10856,11 @@ class MainWindow(QMainWindow):
                 self.current_single_task.vals["_force_out_dir"] = global_out
             if cache_override:
                 self.current_single_task.vals["_force_cache_dir"] = cache_override
+            # One-shot: "Volver a iterar" forces a fresh search that ignores the
+            # cached iterations for this run only (cleared right after).
+            if getattr(self, "_force_reencode_once", False):
+                self.current_single_task.vals["force_reencode"] = True
+                self._force_reencode_once = False
             tasks = [self.current_single_task]
             
         if not tasks: return QMessageBox.warning(self, "No Tasks", "Nothing to process!")
@@ -10880,7 +10955,13 @@ class MainWindow(QMainWindow):
             # don't masquerade as DONE. Either path shows the Reset Status btn.
             if self.current_single_task:
                 if self.current_single_task.status == "✅":
-                    self.drop_zone.mark_done()
+                    t = self.current_single_task
+                    is_iter = (getattr(t, "result_mode", "") == "ITERATIVE")
+                    self.drop_zone.mark_done(is_iterative=is_iter)
+                    # Surface the outcome in a clear modal window (English). Modal
+                    # + no inline text means nothing lingers once the user runs
+                    # again — the message only exists while the dialog is open.
+                    self._show_single_result_dialog(t)
                 else:
                     self.drop_zone.mark_failed()
 
@@ -10893,6 +10974,76 @@ class MainWindow(QMainWindow):
         self.current_single_task.output_path = None
         self.drop_zone.mark_ready()
         self.update_make_button()
+
+    def _reiterate_single(self):
+        """Re-run the current single task forcing a fresh iterative search that
+        ignores any cached iterations — without the user having to toggle
+        'Keep iterations' or delete the _ITERATIONS folder. Triggered by the
+        drop-zone 'Search Again' button or the result dialog."""
+        if not self.current_single_task:
+            return
+        if self.worker and self.worker.isRunning():
+            return
+        self._force_reencode_once = True
+        self.start_processing()
+
+    def _show_single_result_dialog(self, task):
+        """Clear, English, modal summary of a finished single render.
+
+        Tells the user plainly WHAT won (Q / FPS / size) and — crucially —
+        whether the result was REUSED from an earlier run (no encoding) or
+        freshly searched, so an instant cache copy no longer looks like nothing
+        happened. Offers a clearly-labelled 'Search again' action for cache hits
+        that re-runs the search ignoring saved results."""
+        from_cache = bool(getattr(task, "result_from_cache", False))
+        q = getattr(task, "result_quality", None)
+        fps = getattr(task, "result_fps", None)
+        size = getattr(task, "result_size", None)
+        is_iter = (getattr(task, "result_mode", "") == "ITERATIVE")
+
+        parts = []
+        if q is not None: parts.append(f"Q{q}")
+        if fps is not None: parts.append(f"{fps} fps")
+        if size:
+            try: parts.append(f"{size / (1024 * 1024):.2f} MB")
+            except Exception: pass
+        winner = "   ·   ".join(parts) if parts else "—"
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        if from_cache:
+            box.setWindowTitle("Render complete — reused a previous result")
+            box.setText("A matching result from an earlier run was reused.")
+            box.setInformativeText(
+                "Nothing was re-encoded this time. The tool found a result from a "
+                "previous run that already fits your current target size, so it "
+                "reused it instantly.\n\n"
+                f"Result used:   {winner}\n\n"
+                "Want a brand-new encode instead? Click \"Search again\" to ignore "
+                "the saved results and run the size search from scratch."
+            )
+        else:
+            box.setWindowTitle("Render complete")
+            box.setText("Encoding finished.")
+            box.setInformativeText(
+                f"Result:   {winner}\n\n"
+                + ("The size search ran from scratch." if is_iter
+                   else "Manual encode (fixed quality / FPS).")
+            )
+
+        again_btn = None
+        if from_cache and is_iter:
+            again_btn = box.addButton("Search again", QMessageBox.AcceptRole)
+        open_btn = box.addButton("Open folder", QMessageBox.ActionRole)
+        close_btn = box.addButton("Close", QMessageBox.RejectRole)
+        box.setDefaultButton(close_btn)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked is open_btn:
+            self._open_single_output_folder()
+        elif again_btn is not None and clicked is again_btn:
+            self._reiterate_single()
 
 if __name__ == "__main__":
     # Windows-only: tell the shell that this process is its own app
