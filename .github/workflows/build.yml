@@ -1,7 +1,7 @@
 # Build MakeAGIF for macOS Apple Silicon → Artifact + GitHub Release
 #
 # Download (after success):
-#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.4-macos/MakeAGIF-v3.1.4-macOS-arm64.zip
+#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.5-macos/MakeAGIF-v3.1.5-macOS-arm64.zip
 
 name: Build MakeAGIF (macOS)
 
@@ -17,11 +17,11 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "3.1.4"
-  RELEASE_TAG: "v3.1.4-macos"
+  APP_VERSION: "3.1.5"
+  RELEASE_TAG: "v3.1.5-macos"
   V3_DIR: V3
-  ZIP_NAME: MakeAGIF-v3.1.4-macOS-arm64.zip
-  MAC_SPEC: MakeAGIF_v3.1.4_mac.spec
+  ZIP_NAME: MakeAGIF-v3.1.5-macOS-arm64.zip
+  MAC_SPEC: MakeAGIF_v3.1.5_mac.spec
 
 jobs:
   build-macos-arm64:
