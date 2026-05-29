@@ -23,5 +23,6 @@ V3/__pycache__/
 .DS_Store
 Thumbs.db
 
-# Optional local settings (keep presets if you want them shared)
-# V3/app_settings.json
+# Per-user runtime data (not part of the app source)
+V3/app_settings.json
+V3/presets/
