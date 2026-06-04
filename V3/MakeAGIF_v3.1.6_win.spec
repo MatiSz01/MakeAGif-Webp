@@ -3,15 +3,15 @@
 # PyInstaller spec for Windows (x86_64).
 #
 # Build:
-#   pyinstaller --noconfirm MakeAGIF_v3.1.5_win.spec
+#   pyinstaller --noconfirm MakeAGIF_v3.1.6_win.spec
 #
 # Output:
-#   dist/MakeAGIF-WEBP v3.1.5.exe   (one-file)
+#   dist/MakeAGIF-WEBP v3.1.6.exe   (one-file)
 #
 # Bundled tools/ (Windows): ffmpeg.exe, ffprobe.exe, gifski.exe, magick.exe
 
 a = Analysis(
-    ["MakeAGIF_v3.1.5_DND_Prototype.py"],
+    ["MakeAGIF_v3.1.6_DND_Prototype.py"],
     pathex=[],
     binaries=[("tools", "tools")],
     datas=[("MakeAGIF.ico", ".")],
@@ -31,7 +31,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="MakeAGIF-WEBP v3.1.5",
+    name="MakeAGIF-WEBP v3.1.6",
     icon="MakeAGIF.ico",
     debug=False,
     bootloader_ignore_signals=False,

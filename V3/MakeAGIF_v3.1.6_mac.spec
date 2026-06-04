@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# PyInstaller spec for macOS Apple Silicon (arm64) — MakeAGIF v3.1.5
+# PyInstaller spec for macOS Apple Silicon (arm64) — MakeAGIF v3.1.6
 #
-# Build: pyinstaller --noconfirm MakeAGIF_v3.1.5_mac.spec
-# Output: dist/MakeAGIF v3.1.5.app
+# Build: pyinstaller --noconfirm MakeAGIF_v3.1.6_mac.spec
+# Output: dist/MakeAGIF v3.1.6.app
 #
 # Tools in ./tools/ (arm64, no .exe): ffmpeg, ffprobe, gifski, magick
 # Run ./ci_bundle_mac_tools.sh if tools/ is empty.
@@ -15,7 +15,7 @@ block_cipher = None
 _icon = "MakeAGIF.icns" if os.path.isfile("MakeAGIF.icns") else None
 
 a = Analysis(
-    ["MakeAGIF_v3.1.5_DND_Prototype.py"],
+    ["MakeAGIF_v3.1.6_DND_Prototype.py"],
     pathex=[],
     binaries=[("tools", "tools")],
     datas=[("MakeAGIF.ico", ".")],
@@ -34,7 +34,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="MakeAGIF v3.1.5",
+    name="MakeAGIF v3.1.6",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -53,18 +53,18 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="MakeAGIF v3.1.5",
+    name="MakeAGIF v3.1.6",
 )
 app = BUNDLE(
     coll,
-    name="MakeAGIF v3.1.5.app",
+    name="MakeAGIF v3.1.6.app",
     icon=_icon,
-    bundle_identifier="com.matias.makeagif.v3-1-5",
+    bundle_identifier="com.matias.makeagif.v3-1-6",
     info_plist={
-        "CFBundleName": "MakeAGIF v3.1.5",
-        "CFBundleDisplayName": "MakeAGIF v3.1.5",
-        "CFBundleShortVersionString": "3.1.5",
-        "CFBundleVersion": "3.1.5",
+        "CFBundleName": "MakeAGIF v3.1.6",
+        "CFBundleDisplayName": "MakeAGIF v3.1.6",
+        "CFBundleShortVersionString": "3.1.6",
+        "CFBundleVersion": "3.1.6",
         "NSHighResolutionCapable": True,
         "CFBundleDocumentTypes": [
             {

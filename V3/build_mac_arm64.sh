@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build MakeAGIF v3.1.5 for macOS Apple Silicon (.app bundle).
+# Build MakeAGIF v3.1.6 for macOS Apple Silicon (.app bundle).
 # Run from the V3 folder on an arm64 Mac:
 #   chmod +x build_mac_arm64.sh ci_bundle_mac_tools.sh && ./build_mac_arm64.sh
 
@@ -22,9 +22,9 @@ if [[ ! -f MakeAGIF.ico ]]; then
 fi
 
 python3 -m pip install -q -r requirements.txt
-python3 -m PyInstaller --noconfirm MakeAGIF_v3.1.5_mac.spec
+python3 -m PyInstaller --noconfirm MakeAGIF_v3.1.6_mac.spec
 
 echo ""
-echo "Done: dist/MakeAGIF v3.1.5.app"
+echo "Done: dist/MakeAGIF v3.1.6.app"
 echo "Bundled tools: ffmpeg, ffprobe, gifski, magick (parity with Windows tools/)"
-echo "Test: open \"dist/MakeAGIF v3.1.5.app\""
+echo "Test: open \"dist/MakeAGIF v3.1.6.app\""

@@ -1,7 +1,16 @@
 # =============================================================================
-# MakeAGIF v3.1.5 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.6 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.6 changelog (supersedes the never-shipped v3.1.5 macOS build):
+#   * FIX (macOS) — frame glob expansion. v3.1.5 correctly dropped shell=True
+#     but assumed gifski expands "*.png" itself; on Unix it does NOT (the shell
+#     normally does that), so a shell-less run would hand gifski a literal
+#     "*.png" → 0 frames. run_cmd now expands "*.png"/"f_*.png" into an explicit
+#     sorted file list on macOS/Linux, while Windows keeps the literal pattern
+#     (gifski/magick expand it there + it dodges the ~32 KB command-line limit
+#     on long clips). Windows behaviour is byte-for-byte unchanged.
+#
 # v3.1.5 changelog:
 #   * PR1 — Trim thumbnails (trimmer IN/OUT, drop-zone strip, batch strip) now
 #     decode OFF the UI thread via _AsyncThumbLoader. SET IN/OUT and editing the
@@ -14,8 +23,8 @@
 #     shell=True for the "*.png" frame glob. On POSIX that runs
 #     `/bin/sh -c argv[0] ...`, so only argv[0] (the executable path, which is
 #     inside "MakeAGIF vX.app" and HAS a space) was the command — /bin/sh
-#     word-split it and failed. Now always shell=False; the tools expand the
-#     glob themselves (as they already did on Windows).
+#     word-split it and failed. Now always shell=False. (Glob expansion was
+#     finished in v3.1.6 — see above.)
 #   * UX (single mode) — after a render a modal result WINDOW (English) now
 #     states the winning params (Q / FPS / size) and clearly flags when the
 #     result was REUSED from a previous run (Smart Match cache hit) instead of
@@ -125,6 +134,7 @@ import queue
 import base64
 import webbrowser
 import copy
+import glob
 from pathlib import Path
 try:
     import cv2
@@ -161,9 +171,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.5"
+SCRIPT_VERSION = "v3.1.6"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.5 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.6 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -1957,23 +1967,42 @@ class ConversionEngine:
             raise InterruptedError("Cancelled by user")
 
     def run_cmd(self, cmd):
-        # Filter None and convert to string
-        cmd_str = ' '.join(f'"{x}"' if ' ' in str(x) else str(x) for x in cmd if x is not None)
+        # Normalize: drop None, stringify, then log the ORIGINAL command (with
+        # the "*.png" pattern intact) so the console stays readable instead of
+        # dumping hundreds of expanded frame paths.
+        cmd = [str(x) for x in cmd if x is not None]
+        cmd_str = ' '.join(f'"{x}"' if ' ' in x else x for x in cmd)
         self.log(f"  CMD: {cmd_str}")
         flags = 0x08000000 if os.name == 'nt' else 0
-        # NEVER use shell=True here. The only wildcard args we pass are the
-        # frame globs (gifski "*.png", magick "f_*.png"), and BOTH tools expand
-        # those internally on every platform — no shell is required.
+        # NEVER use shell=True here: on POSIX, Popen(list, shell=True) runs
+        # `/bin/sh -c <list[0]> ...`, so only list[0] is the command — and the
+        # bundled executable lives inside "MakeAGIF vX.app" (path WITH a space),
+        # which /bin/sh would word-split → "No such file or directory". With
+        # shell=False the argv is passed verbatim, so spaces are safe.
         #
-        # shell=True is actively broken on macOS/Linux: Popen(list, shell=True)
-        # on POSIX runs `/bin/sh -c <list[0]> <list[1]> ...`, so ONLY list[0] is
-        # treated as the command. Because the bundled executable lives inside
-        # "MakeAGIF vX.Y.Z.app" (a path that ALWAYS contains a space), /bin/sh
-        # word-splits list[0] and dies with "No such file or directory"
-        # (reported against $0, which ends up being list[1], e.g. "--fps").
-        # shell=False passes argv verbatim, so spaces in the path are safe.
+        # Wildcard frame args ("*.png" for gifski, "f_*.png" for magick) need
+        # platform-specific handling because WITHOUT a shell nobody expands them:
+        #   * Windows  — gifski/magick expand the pattern THEMSELVES, and keeping
+        #     the literal pattern keeps the command line short (avoids the
+        #     ~32 KB CreateProcess limit on long clips). Pass it through.
+        #   * macOS/Linux — gifski does NOT expand globs (its author confirms the
+        #     shell normally does it), so we expand here into an explicit, sorted
+        #     file list. POSIX ARG_MAX (~1 MB+) easily holds thousands of frames.
+        run_list = cmd
+        if os.name != 'nt':
+            expanded = []
+            for x in cmd:
+                base = os.path.basename(x)
+                if '*' in base or '?' in base:
+                    d = os.path.dirname(x)
+                    pattern = os.path.join(glob.escape(d), base) if d else base
+                    matches = sorted(glob.glob(pattern))
+                    expanded.extend(matches if matches else [x])
+                else:
+                    expanded.append(x)
+            run_list = expanded
         self.current_proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            run_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding='utf-8', errors='replace', creationflags=flags
         )
         
@@ -11054,7 +11083,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.5"
+                "MakeAGIF.WEBP.v3.1.6"
             )
         except Exception:
             pass
