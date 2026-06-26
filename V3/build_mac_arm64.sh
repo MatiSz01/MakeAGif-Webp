@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build MakeAGIF v3.1.7 for macOS Apple Silicon (.app bundle).
+# Build MakeAGIF v3.1.8 for macOS Apple Silicon (.app bundle).
 # Run from the V3 folder on an arm64 Mac:
 #   chmod +x build_mac_arm64.sh ci_bundle_mac_tools.sh && ./build_mac_arm64.sh
 
@@ -11,8 +11,8 @@ if [[ "$(uname -m)" != "arm64" ]]; then
   echo "WARNING: This host is not arm64. For native Apple Silicon, build on an M-series Mac."
 fi
 
-if [[ ! -x tools/ffmpeg || ! -x tools/ffprobe || ! -x tools/gifski || ! -x tools/magick ]]; then
-  echo "==> tools/ incomplete — installing macOS bundles (ffmpeg, gifski, imagemagick)..."
+if [[ ! -x tools/ffmpeg || ! -x tools/ffprobe || ! -x tools/gifski || ! -x tools/img2webp ]]; then
+  echo "==> tools/ incomplete — installing macOS bundles (ffmpeg, gifski, img2webp)..."
   chmod +x ci_bundle_mac_tools.sh
   ./ci_bundle_mac_tools.sh
 fi
@@ -22,9 +22,9 @@ if [[ ! -f MakeAGIF.ico ]]; then
 fi
 
 python3 -m pip install -q -r requirements.txt
-python3 -m PyInstaller --noconfirm MakeAGIF_v3.1.7_mac.spec
+python3 -m PyInstaller --noconfirm MakeAGIF_v3.1.8_mac.spec
 
 echo ""
-echo "Done: dist/MakeAGIF v3.1.7.app"
-echo "Bundled tools: ffmpeg, ffprobe, gifski, magick (parity with Windows tools/)"
-echo "Test: open \"dist/MakeAGIF v3.1.7.app\""
+echo "Done: dist/MakeAGIF v3.1.8.app"
+echo "Bundled tools: ffmpeg, ffprobe, gifski, img2webp (macOS WebP encoder)"
+echo "Test: open \"dist/MakeAGIF v3.1.8.app\""

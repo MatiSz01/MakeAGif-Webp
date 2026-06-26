@@ -1,7 +1,20 @@
 # =============================================================================
-# MakeAGIF v3.1.7 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.8 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.8 changelog:
+#   * FIX (macOS) — WebP export, take 2. v3.1.7 routed macOS WebP to the bundled
+#     ImageMagick, but Homebrew's `magick` is NOT relocatable: copied on its own
+#     it can't find delegates.xml / its coder modules and dies with
+#     "NoDecodeDelegateForThisImageFormat" — it couldn't even read the PNG
+#     frames. We now bundle Google's official, STATICALLY-LINKED libwebp tool
+#     `img2webp` (self-contained, no config/coder deps) and make it the
+#     preferred WebP encoder on macOS. It handles alpha natively and uses EXACT
+#     millisecond frame timing (no more centisecond quantisation). The broken
+#     `magick` is no longer bundled on macOS. Windows is untouched: it has no
+#     img2webp, so it still uses ffmpeg (non-alpha) / magick (alpha) exactly as
+#     before.
+#
 # v3.1.7 changelog:
 #   * FIX (macOS) — WebP export. The bundled macOS ffmpeg (Homebrew default)
 #     ships WITHOUT the libwebp encoder, so `-c:v libwebp` died with "Unknown
@@ -185,9 +198,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.7"
+SCRIPT_VERSION = "v3.1.8"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.7 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.8 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -1331,7 +1344,12 @@ FFPROBE_PATH = get_tool_path("ffprobe")  # used for VFR detection (ffmpeg
                                           # stderr doesn't expose r/avg
                                           # frame rate separately)
 GIFSKI_PATH = get_tool_path("gifski")
-MAGICK_PATH = get_optional_tool_path("magick")  # WebP+alpha (same as Windows bundle)
+MAGICK_PATH = get_optional_tool_path("magick")  # WebP+alpha (Windows bundle)
+# macOS WebP encoder: the official, statically-linked libwebp tool. Unlike the
+# Homebrew `magick` binary (which needs external delegates.xml + coder modules
+# that don't ship with a copied binary), img2webp is fully self-contained and
+# also gives exact millisecond frame timing.
+IMG2WEBP_PATH = get_optional_tool_path("img2webp")
 
 
 def _ffmpeg_has_encoder(name):
@@ -2495,15 +2513,28 @@ class ConversionEngine:
             if params.get("faster_encode"): cmd.append("--fast")
             cmd.extend(["-o", tmp_out, os.path.join(cpath, "*.png")])
         else:
-            # WEBP. Prefer ffmpeg's libwebp encoder: exact per-frame timing and
-            # the same path Windows has always used. Fall back to ImageMagick
-            # when EITHER alpha is requested (magick gives better transparent
-            # WebP, as before) OR this ffmpeg build lacks the libwebp encoder
-            # (the macOS bundle does — otherwise it dies "Unknown encoder
-            # 'libwebp'"). magick uses centisecond -delay, so the effective fps
-            # is quantised vs ffmpeg's exact framerate — acceptable as a fallback.
-            use_magick = bool(MAGICK_PATH) and (params.get("has_alpha") or not FFMPEG_HAS_LIBWEBP)
-            if use_magick:
+            # ---- WEBP encoder selection (priority order) ----
+            # 1) img2webp — bundled on macOS. Official libwebp tool, statically
+            #    linked (works on any Mac, unlike Homebrew's magick which needs
+            #    external config + coder modules). Handles alpha natively and
+            #    uses EXACT millisecond frame timing.
+            # 2) ImageMagick — the Windows alpha path (unchanged), plus any build
+            #    whose ffmpeg lacks libwebp where a relocatable magick exists.
+            #    Uses centisecond -delay (fps slightly quantised).
+            # 3) ffmpeg libwebp — the original Windows non-alpha path (exact).
+            # NOTE: img2webp/magick are absent on Windows, so Windows always
+            # lands on the magick(alpha)/ffmpeg(non-alpha) branches — unchanged.
+            if IMG2WEBP_PATH:
+                ms = max(1, int(round(1000.0 / fps)))
+                cmd = [IMG2WEBP_PATH, "-loop", "1" if params.get("play_once") else "0", "-d", str(ms)]
+                if params.get("faster_encode"): cmd.extend(["-m", "1"])
+                # img2webp defaults to LOSSLESS, so request lossy explicitly for
+                # the quality-controlled path.
+                if params.get("webp_lossless"): cmd.append("-lossless")
+                else: cmd.extend(["-lossy", "-q", str(q)])
+                cmd.append(os.path.join(cpath, "f_*.png"))
+                cmd.extend(["-o", tmp_out])
+            elif bool(MAGICK_PATH) and (params.get("has_alpha") or not FFMPEG_HAS_LIBWEBP):
                 delay = max(1, int(round(100.0 / fps)))
                 cmd = [MAGICK_PATH, "-delay", str(delay), os.path.join(cpath, "f_*.png")]
                 if params.get("has_alpha"): cmd.extend(["-dispose", "Background"])
@@ -9663,8 +9694,8 @@ class MainWindow(QMainWindow):
         # Credits / licenses block. We acknowledge:
         #   - FFmpeg (LGPL/GPL): video probing, scene detection, encoding pipeline
         #   - gifski (AGPL):     high-quality GIF encoder (all GIFs)
-        #   - ImageMagick (Apache 2): WebP for alpha + WebP fallback when ffmpeg
-        #                             lacks libwebp (macOS)
+        #   - ImageMagick (Apache 2): WebP for alpha on Windows
+        #   - libwebp / img2webp (BSD): self-contained WebP encoder on macOS
         #   - Qt / PySide6 (LGPL): the entire UI / multimedia layer
         #   - Python (PSF):      runtime
         #   - PyInstaller (GPL+exception): packaging
@@ -9689,9 +9720,11 @@ class MainWindow(QMainWindow):
               the high-quality GIF encoder used in the GIF pipeline.
               Licensed under AGPLv3.</li>
           <li><b><a href="https://imagemagick.org">ImageMagick</a></b> —
-              WebP assembler for transparency, and the WebP fallback on builds
-              whose FFmpeg lacks the libwebp encoder (e.g. macOS).
+              WebP assembler for transparency on Windows.
               Licensed under the Apache 2.0 / ImageMagick license.</li>
+          <li><b><a href="https://developers.google.com/speed/webp">libwebp</a></b>
+              (img2webp) by Google — the self-contained WebP encoder used on
+              macOS. BSD-3-Clause license.</li>
         </ul>
 
         <h4 style="color:#fff; margin: 12px 0 4px 0;">Runtime / framework</h4>
@@ -11137,7 +11170,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.7"
+                "MakeAGIF.WEBP.v3.1.8"
             )
         except Exception:
             pass
