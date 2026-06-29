@@ -1,7 +1,20 @@
 # =============================================================================
-# MakeAGIF v3.1.8 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.9 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.9 changelog:
+#   * Persistent settings (single mode) — the last-used parameters now stick.
+#     1) They're saved to app_settings.json on render AND on app close
+#        (key "last_single_vals"), and restored on the next launch instead of
+#        snapping back to the hard-coded defaults.
+#     2) Loading a new clip no longer resets the panel to defaults — it inherits
+#        the current parameters (format, mode, fps/quality, dimensions, flags…);
+#        only the trim is cleared since it's specific to each source.
+#     3) The encoding-mode tab (Iterative/Manual) is no longer force-reset to
+#        Iterative on import, so "where you left off" is preserved.
+#     Trim is intentionally NOT restored on a fresh boot (set_vals only applies
+#     a trim when a source is loaded), so no stale TC range ever reappears.
+#
 # v3.1.8 changelog:
 #   * FIX (macOS) — WebP export, take 2. v3.1.7 routed macOS WebP to the bundled
 #     ImageMagick, but Homebrew's `magick` is NOT relocatable: copied on its own
@@ -198,9 +211,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.8"
+SCRIPT_VERSION = "v3.1.9"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.8 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.9 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -8479,17 +8492,19 @@ class SettingsPanel(QFrame):
         QTimer.singleShot(100, self.load_initial_state)
 
     def load_initial_state(self):
-        """Refresh the preset dropdown.
-        
-        Session restore (`_last_session.json`) is intentionally disabled
-        in v3.1: every launch starts fresh from the hard-coded defaults,
-        which avoids surprises like a stale trim TC range showing up
-        without a video loaded. Per-task settings still live on each
-        Task object so batch state survives within a session.
-        We can re-introduce session restore later as an opt-in setting
-        once we have a clearer story around what should and shouldn't
-        be remembered."""
+        """Refresh presets, then restore the last-used single-mode settings from
+        app_settings.json (v3.1.9).
+
+        Trim is NOT a concern here: set_vals only applies a trim when a source is
+        loaded (duration > 0), so at boot the panel restores every encoding
+        parameter the user last used while the trim fields stay clean."""
         self.refresh_presets()
+        try:
+            last = (load_app_settings() or {}).get("last_single_vals")
+            if isinstance(last, dict) and last:
+                self.set_vals(last)
+        except Exception:
+            pass
 
     def delete_preset(self):
         name = self.preset.currentText()
@@ -8783,14 +8798,27 @@ class SettingsPanel(QFrame):
             QMessageBox.information(self, "Preset Updated", f"Preset '{name}' updated successfully.")
         except Exception as e: QMessageBox.critical(self, "Error", f"Failed to update preset:\n{e}")
 
-    def save_session(self):
-        """No-op in v3.1 — session restore is disabled.
+    def persist_last_vals(self):
+        """Remember the current single-mode parameters in app_settings.json so the
+        NEXT launch restores them instead of snapping back to the hard-coded
+        defaults (v3.1.9). Trim is saved too but is only re-applied when a source
+        is actually loaded (see set_vals), so it never resurrects a stale TC range
+        on a fresh boot."""
+        try:
+            s = dict(load_app_settings() or {})
+            s["last_single_vals"] = self.get_vals()
+            self._app_settings = s
+            save_app_settings(s)
+        except Exception:
+            pass
 
-        Kept as a stub so the existing closeEvent connection doesn't
-        need editing; we'll wire it back to JSON dump if/when session
-        restore returns as an opt-in. Side benefit: no half-stale
-        ``_last_session.json`` files lingering between launches."""
-        pass
+    def save_session(self):
+        """Persist the last-used single-mode settings on close (v3.1.9).
+
+        Previously a no-op (session restore was disabled). We now store just the
+        parameter set — not the loaded clip or trim range — so reopening the app
+        restores where the user left off without resurrecting a stale trim."""
+        self.persist_last_vals()
 
     def set_current_fps(self, fps, duration_sec=None):
         """Update the fps and (optionally) total duration used to render trim
@@ -10578,6 +10606,16 @@ class MainWindow(QMainWindow):
     def _on_single_imported(self, task):
         """Called when the background probe finishes successfully."""
         self._import_worker = None
+        # Keep the user's CURRENT parameters instead of snapping the panel back
+        # to the Task's hard-coded defaults every time a clip is loaded (v3.1.9).
+        # Only the trim is reset, since it's specific to each source.
+        try:
+            inherited = self.settings.get_vals()
+            inherited["trim_start"] = "00:00:00"
+            inherited["trim_end"] = ""
+            task.vals = inherited
+        except Exception:
+            pass
         self.current_single_task = task
         try:
             self.drop_zone.load_video(task)
@@ -10586,7 +10624,6 @@ class MainWindow(QMainWindow):
                 duration_sec=task.specs.get('duration', 0) or 0,
             )
             self.settings.set_vals(task.vals)
-            self.settings.tabs.setCurrentIndex(0)
             self.update_live_dims()
         except Exception as exc:
             self._on_single_import_failed(task.path, str(exc))
@@ -10968,6 +11005,9 @@ class MainWindow(QMainWindow):
         elif self.current_single_task:
             # Sync current UI to task
             self.current_single_task.vals = self.settings.get_vals()
+            # Remember these as the last-used settings so the next launch (and the
+            # next imported clip) start from here instead of the defaults.
+            self.settings.persist_last_vals()
             if global_out:
                 self.current_single_task.vals["_force_out_dir"] = global_out
             if cache_override:
@@ -11170,7 +11210,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.8"
+                "MakeAGIF.WEBP.v3.1.9"
             )
         except Exception:
             pass
