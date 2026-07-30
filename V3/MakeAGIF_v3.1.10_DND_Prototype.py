@@ -1,7 +1,17 @@
 # =============================================================================
-# MakeAGIF v3.1.9 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.10 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.10 changelog:
+#   * FIX — persistent settings actually persist now in the packaged build.
+#     v3.1.9 wrote app_settings.json next to __file__, which inside a PyInstaller
+#     one-file .exe is the throwaway _MEIxxxx temp folder (deleted on exit), so the
+#     last-used parameters were saved to a location that vanished and every launch
+#     fell back to the defaults. The settings file now lives next to the executable
+#     (Windows/Linux) or in ~/Library/Application Support/MakeAGIF (macOS .app),
+#     the same persistent spot the presets use. Same fix covers cache dir + chart
+#     toggle persistence.
+#
 # v3.1.9 changelog:
 #   * Persistent settings (single mode) — the last-used parameters now stick.
 #     1) They're saved to app_settings.json on render AND on app close
@@ -211,9 +221,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.9"
+SCRIPT_VERSION = "v3.1.10"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.9 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.10 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -477,9 +487,29 @@ def build_playback_proxy(source_path, content_key, src_w, src_h):
 # choice of cache folder, etc. survives across runs without polluting their
 # preset library. Falls back silently to defaults on any I/O error.
 def _app_settings_path():
+    """Location of app_settings.json.
+
+    CRITICAL (v3.1.10): this must live next to the PERSISTENT user data, NOT next
+    to ``__file__``. In a PyInstaller one-file build ``__file__`` resolves to the
+    temporary ``_MEIxxxx`` extraction folder, which is wiped when the app exits —
+    so anything written there (last-used settings, cache dir, chart toggle) never
+    survives a restart and the app always boots back to the hard-coded defaults.
+
+    We mirror the presets location instead:
+      * Windows / Linux: right next to the executable (or the .py in dev).
+      * macOS frozen .app: ~/Library/Application Support/MakeAGIF (writing inside
+        the .app bundle is read-only / hidden once installed or signed).
+    """
     try:
-        base = os.path.dirname(os.path.abspath(__file__))
-    except NameError:
+        if getattr(sys, "frozen", False):
+            if sys.platform == "darwin":
+                base = os.path.expanduser("~/Library/Application Support/MakeAGIF")
+            else:
+                base = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        os.makedirs(base, exist_ok=True)
+    except Exception:
         base = os.getcwd()
     return os.path.join(base, "app_settings.json")
 
@@ -11210,7 +11240,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.9"
+                "MakeAGIF.WEBP.v3.1.10"
             )
         except Exception:
             pass

@@ -1,7 +1,7 @@
 # Build MakeAGIF for macOS Apple Silicon → Artifact + GitHub Release
 #
 # Download (after success):
-#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.9-macos/MakeAGIF-v3.1.9-macOS-arm64.zip
+#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.10-macos/MakeAGIF-v3.1.10-macOS-arm64.zip
 
 name: Build MakeAGIF (macOS)
 
@@ -17,11 +17,11 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "3.1.9"
-  RELEASE_TAG: "v3.1.9-macos"
+  APP_VERSION: "3.1.10"
+  RELEASE_TAG: "v3.1.10-macos"
   V3_DIR: V3
-  ZIP_NAME: MakeAGIF-v3.1.9-macOS-arm64.zip
-  MAC_SPEC: MakeAGIF_v3.1.9_mac.spec
+  ZIP_NAME: MakeAGIF-v3.1.10-macOS-arm64.zip
+  MAC_SPEC: MakeAGIF_v3.1.10_mac.spec
 
 jobs:
   build-macos-arm64:
@@ -69,10 +69,19 @@ jobs:
       - name: Build .app with PyInstaller
         run: python -m PyInstaller --noconfirm ${{ env.MAC_SPEC }}
 
+      - name: Add macOS install extras
+        run: |
+          cp -R ../macos_extras/. dist/
+          chmod +x "dist/Open MakeAGIF (first run).command"
+
       - name: Zip .app for download
         run: |
           cd dist
-          zip -ry "../${{ env.ZIP_NAME }}" "MakeAGIF v${{ env.APP_VERSION }}.app"
+          zip -ry "../${{ env.ZIP_NAME }}" \
+            "MakeAGIF v${{ env.APP_VERSION }}.app" \
+            "Open MakeAGIF (first run).command" \
+            "README - Install on Mac - ENGLISH.txt" \
+            "README - Instalación en Mac - ESPAÑOL.txt"
           ls -lh "../${{ env.ZIP_NAME }}"
 
       - name: Upload workflow artifact
@@ -90,10 +99,13 @@ jobs:
           body: |
             Automated build from commit `${{ github.sha }}` (workflow run ${{ github.run_number }}).
 
-            **Install:** unzip, move `MakeAGIF v${{ env.APP_VERSION }}.app` to Applications.
-            **First launch:** Right-click → Open if Gatekeeper blocks unsigned apps.
+            **Install:** unzip, then either:
+              - Double-click `Open MakeAGIF (first run).command` (removes the Gatekeeper quarantine flag and launches the app), OR
+              - Move `MakeAGIF v${{ env.APP_VERSION }}.app` to Applications and run `xattr -cr "/Applications/MakeAGIF v${{ env.APP_VERSION }}.app"` in Terminal.
 
-            Bundled tools (arm64, same set as Windows): ffmpeg, ffprobe, gifski, magick (ImageMagick).
+            Full instructions in `README - Install on Mac - ENGLISH.txt` and `README - Instalación en Mac - ESPAÑOL.txt` (inside the zip).
+
+            Bundled tools (arm64, same set as Windows): ffmpeg, ffprobe, gifski, magick (ImageMagick), img2webp (libwebp).
           files: ${{ env.V3_DIR }}/${{ env.ZIP_NAME }}
           prerelease: true
           make_latest: true
