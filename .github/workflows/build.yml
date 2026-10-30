@@ -1,7 +1,7 @@
 # Build MakeAGIF for macOS Apple Silicon → DMG + GitHub Release
 #
 # Download (after success):
-#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.12-macos/MakeAGIF-v3.1.12-macOS-arm64.dmg
+#   https://github.com/MatiSz01/MakeAGif-Webp/releases/download/v3.1.13-macos/MakeAGIF-v3.1.13-macOS-arm64.dmg
 
 name: Build MakeAGIF (macOS)
 
@@ -17,11 +17,11 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "3.1.12"
-  RELEASE_TAG: "v3.1.12-macos"
+  APP_VERSION: "3.1.13"
+  RELEASE_TAG: "v3.1.13-macos"
   V3_DIR: V3
-  DMG_NAME: MakeAGIF-v3.1.12-macOS-arm64.dmg
-  MAC_SPEC: MakeAGIF_v3.1.12_mac.spec
+  DMG_NAME: MakeAGIF-v3.1.13-macOS-arm64.dmg
+  MAC_SPEC: MakeAGIF_v3.1.13_mac.spec
 
 jobs:
   build-macos-arm64:

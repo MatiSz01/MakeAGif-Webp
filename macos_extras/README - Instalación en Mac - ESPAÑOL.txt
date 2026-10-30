@@ -1,11 +1,11 @@
 ================================================================
-  MakeAGIF v3.1.12 — CÓMO INSTALAR EN macOS
+  MakeAGIF v3.1.13 — CÓMO INSTALAR EN macOS
 ================================================================
 
 
 OPCIÓN A — La más fácil (recomendada)
 --------------------------------------
-1. Arrastrá "MakeAGIF v3.1.12.app" a la carpeta
+1. Arrastrá "MakeAGIF v3.1.13.app" a la carpeta
    Aplicaciones (Applications).
 2. Hacé doble click en "Open MakeAGIF (first run).command"
    (este archivo, incluido en esta misma imagen de disco).
@@ -18,12 +18,12 @@ OPCIÓN A — La más fácil (recomendada)
 
 OPCIÓN B — Manual, por Terminal
 ---------------------------------
-1. Arrastrá "MakeAGIF v3.1.12.app" a la carpeta
+1. Arrastrá "MakeAGIF v3.1.13.app" a la carpeta
    Aplicaciones.
 2. Abrí la app "Terminal" (Cmd+Espacio, escribí "Terminal", Enter).
 3. Pegá esta línea y presioná Enter:
 
-   xattr -cr "/Applications/MakeAGIF v3.1.12.app"
+   xattr -cr "/Applications/MakeAGIF v3.1.13.app"
 
 4. Abrí la app normalmente desde Aplicaciones o Launchpad.
 

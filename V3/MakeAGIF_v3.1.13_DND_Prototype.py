@@ -1,7 +1,18 @@
 # =============================================================================
-# MakeAGIF v3.1.12 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.13 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.13 changelog:
+#   * FIX — Auto Optimize buffers no longer boot at 0 MB. Fresh start is
+#     lower 1.50 / upper 0.50, and the fields cannot go below 0.10. A saved
+#     0 (the old uninitialized spinbox) is replaced with that pair. Loop
+#     Forever is checked by default; that same broken save no longer turns
+#     it off.
+#   * FIX — Loop Forever OFF still produced a looping file in Auto Optimize.
+#     The iteration cache signature ignored play_once, so a looping sample
+#     from an earlier run was copied as the "play once" result. play_once is
+#     now part of the signature (looping caches keep their old tag).
+#
 # v3.1.12 changelog:
 #   * FIX — Target Size, buffer, FPS and Quality numbers were invisible on
 #     Qt 6.12. A stylesheet border/padding on the spinbox collapsed the editor
@@ -233,9 +244,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.12"
+SCRIPT_VERSION = "v3.1.13"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.12 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.13 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -2294,6 +2305,20 @@ class ConversionEngine:
             target_mb = p.get("target", 16.0)
             low_m = p.get("low", 1.5)
             up_m = p.get("up", 0.5)
+            try:
+                low_m = float(low_m)
+            except (TypeError, ValueError):
+                low_m = 1.5
+            try:
+                up_m = float(up_m)
+            except (TypeError, ValueError):
+                up_m = 0.5
+            # A zero margin collapses that side of the size bracket onto the
+            # target. Never search with a 0 MB buffer.
+            if low_m <= 0:
+                low_m = 1.5
+            if up_m <= 0:
+                up_m = 0.5
             
             out_path = self.get_output_path(task.path, p["format"], force_dir=p.get("_force_out_dir"))
             dest_dir = os.path.dirname(out_path)
@@ -2337,6 +2362,7 @@ class ConversionEngine:
                     "trim_end":     p.get("trim_end", ""),
                     "has_alpha":    p.get("alpha", False),
                     "webp_lossless": p.get("lossless", False),
+                    "play_once":    p.get("play_once", False),
                 }),
                 # User-overridable cache root (Advanced → Cache Folder). Falls back
                 # to the OS temp directory when nothing is configured. We tolerate
@@ -2652,20 +2678,29 @@ class ConversionEngine:
         - ``webp_lossless``: lossless WebP is multiple times bigger than
           lossy at the same Q; it must be its own bucket.
 
+        - ``play_once``: barely changes size, but the loop flag is baked
+          into the file. Cached files are copied as the final output, so a
+          looping sample must never satisfy a "play once" run (or vice
+          versa). Only the play-once case adds a token, so existing
+          looping caches keep their signature.
+
         Format/extension is implicit in the filename's ``ext`` already,
-        so we don't include it in the hash. Same for play_once / faster_encode
-        which don't change size meaningfully.
+        so we don't include it in the hash. faster_encode is left out
+        because it doesn't change size meaningfully.
 
         Returns a short 8-char hex tag — collision-safe enough for the
         handful of variants a single source ever sees in practice and
         keeps filenames readable.
         """
-        raw = "|".join([
+        parts = [
             str(p.get("trim_start", "") or ""),
             str(p.get("trim_end", "") or ""),
             "a1" if p.get("has_alpha") else "a0",
             "ll1" if p.get("webp_lossless") else "ll0",
-        ])
+        ]
+        if p.get("play_once"):
+            parts.append("once")
+        raw = "|".join(parts)
         return hashlib.md5(raw.encode("utf-8")).hexdigest()[:8]
 
     def _build_knowledge_cache(self, iter_dir, base, w, h, ext, signature):
@@ -8093,6 +8128,7 @@ class SettingsPanel(QFrame):
         # Toggles Row 1: Loop & Transparency
         r_t1 = QHBoxLayout()
         self.chk_loop = QCheckBox("Loop Forever"); self.chk_loop.setToolTip("Make the GIF loop infinitely.")
+        self.chk_loop.setChecked(True)
         self.chk_alpha = QCheckBox("Transparency"); self.chk_alpha.setToolTip("Try to preserve alpha/transparency from the source video.")
         r_t1.addWidget(self.chk_loop); r_t1.addWidget(self.chk_alpha)
         v_fmt.addLayout(r_t1)
@@ -8249,7 +8285,16 @@ class SettingsPanel(QFrame):
         # ITERATIVE TAB
         it = QWidget(); iv = QVBoxLayout(it); iv.setContentsMargins(4, 5, 2, 5)
         self.mb_sp = QDoubleSpinBox(); self.mb_sp.setRange(0.01, 2000.0); self.mb_sp.setDecimals(2); self.mb_sp.setValue(16.0); self.mb_sp.setToolTip("Target file size to maintain across the batch (in Megabytes).")
-        self.low_sp = QDoubleSpinBox(); self.up_sp = QDoubleSpinBox(); [s.setRange(0.0, 1000.0) for s in [self.low_sp, self.up_sp]]; [s.setDecimals(2) for s in [self.low_sp, self.up_sp]]
+        # Buffers are a margin around the target size. 0 makes the acceptance
+        # bracket touch the target on that side and the search can fail to
+        # settle, so the floor is 0.1 MB and the fresh-start pair is 1.5 / 0.5.
+        self.low_sp = QDoubleSpinBox(); self.up_sp = QDoubleSpinBox()
+        for s in (self.low_sp, self.up_sp):
+            s.setRange(0.1, 1000.0)
+            s.setDecimals(2)
+            s.setSingleStep(0.1)
+        self.low_sp.setValue(1.5)
+        self.up_sp.setValue(0.5)
         self.low_sp.setToolTip("Minimum buffer size (lower values give tighter size control but worse quality fluctuations).")
         self.up_sp.setToolTip("Maximum buffer size (higher values give more quality leeway).")
         
@@ -9068,8 +9113,17 @@ class SettingsPanel(QFrame):
         try:
             # Numeric values
             self.mb_sp.setValue(float(get_val("target", "-TARGET_MB-", 16.0, True)))
-            self.low_sp.setValue(float(get_val("low", "-LOWER_MARGIN-", 1.5, True)))
-            self.up_sp.setValue(float(get_val("up", "-UPPER_MARGIN-", 0.5, True)))
+            low = float(get_val("low", "-LOWER_MARGIN-", 1.5, True))
+            up = float(get_val("up", "-UPPER_MARGIN-", 0.5, True))
+            # A saved 0 is the uninitialized spinbox (it used to boot at 0 and
+            # then get written to app_settings.json). That snapshot is not a
+            # real setup: put back 1.5 / 0.5 and don't treat its Loop Forever
+            # = off as a choice.
+            buffers_were_zero = low <= 0 or up <= 0
+            if buffers_were_zero:
+                low, up = 1.5, 0.5
+            self.low_sp.setValue(low)
+            self.up_sp.setValue(up)
             self.fps_sp.setValue(int(get_val("fps", "-MANUAL_FPS-", 15, True)))
             self.qual_sp.setValue(int(get_val("qual", "-MANUAL_QUALITY-", 90, True)))
             
@@ -9089,7 +9143,8 @@ class SettingsPanel(QFrame):
             self.tabs.setCurrentIndex(0 if is_iter else 1)
             
             # Checkboxes
-            self.chk_loop.setChecked(not get_val("play_once", "-PLAY_ONCE-", False))
+            play_once = False if buffers_were_zero else bool(get_val("play_once", "-PLAY_ONCE-", False))
+            self.chk_loop.setChecked(not play_once)
             self.chk_fast.setChecked(get_val("fast", "-FASTER_ENCODE-", False))
             self.chk_alpha.setChecked(get_val("alpha", "-HAS_ALPHA-", False))
             self.chk_loss.setChecked(get_val("lossless", "-WEBP_LOSSLESS-", False))
@@ -11281,7 +11336,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.12"
+                "MakeAGIF.WEBP.v3.1.13"
             )
         except Exception:
             pass
