@@ -1,7 +1,13 @@
 # =============================================================================
-# MakeAGIF v3.1.10 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.11 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.11 changelog:
+#   * FIX — GIF with "Loop Forever" off failed on gifski 1.32+. The encoder
+#     dropped the old --once flag ("unexpected argument '--once' found") and
+#     now takes --repeat (-1 = play once, 0 = forever). Unchecked Loop Forever
+#     now passes --repeat -1. Loop Forever on is unchanged (gifski's default).
+#
 # v3.1.10 changelog:
 #   * FIX — persistent settings actually persist now in the packaged build.
 #     v3.1.9 wrote app_settings.json next to __file__, which inside a PyInstaller
@@ -221,9 +227,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.10"
+SCRIPT_VERSION = "v3.1.11"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.10 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.11 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -2552,7 +2558,10 @@ class ConversionEngine:
         if out_fmt == "GIF":
             cmd = [GIFSKI_PATH, "--fps", str(fps), "--quality", str(q)]
             if w > 0: cmd.extend(["--width", str(w)])
-            if params.get("play_once"): cmd.append("--once")
+            # gifski >= 1.14 replaced --once with --repeat (-1 = play once,
+            # 0 = forever). 1.32 rejects --once outright, which failed every
+            # GIF exported with "Loop Forever" unchecked.
+            if params.get("play_once"): cmd.extend(["--repeat", "-1"])
             if params.get("faster_encode"): cmd.append("--fast")
             cmd.extend(["-o", tmp_out, os.path.join(cpath, "*.png")])
         else:
@@ -11240,7 +11249,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.10"
+                "MakeAGIF.WEBP.v3.1.11"
             )
         except Exception:
             pass

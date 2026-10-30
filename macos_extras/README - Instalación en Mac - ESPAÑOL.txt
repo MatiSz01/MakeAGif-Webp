@@ -1,14 +1,14 @@
 ================================================================
-  MakeAGIF v3.1.10 — CÓMO INSTALAR EN macOS
+  MakeAGIF v3.1.11 — CÓMO INSTALAR EN macOS
 ================================================================
 
 
 OPCIÓN A — La más fácil (recomendada)
 --------------------------------------
-1. Arrastrá "MakeAGIF v3.1.10.app" a la carpeta
+1. Arrastrá "MakeAGIF v3.1.11.app" a la carpeta
    Aplicaciones (Applications).
 2. Hacé doble click en "Open MakeAGIF (first run).command"
-   (este archivo, incluido en este mismo zip).
+   (este archivo, incluido en esta misma imagen de disco).
 3. Si aparece un aviso de que no se puede verificar el desarrollador:
    click derecho sobre el archivo .command -> Abrir -> Abrir.
 4. Se abre una ventana de Terminal que hace todo el trabajo sola
@@ -18,12 +18,12 @@ OPCIÓN A — La más fácil (recomendada)
 
 OPCIÓN B — Manual, por Terminal
 ---------------------------------
-1. Arrastrá "MakeAGIF v3.1.10.app" a la carpeta
+1. Arrastrá "MakeAGIF v3.1.11.app" a la carpeta
    Aplicaciones.
 2. Abrí la app "Terminal" (Cmd+Espacio, escribí "Terminal", Enter).
 3. Pegá esta línea y presioná Enter:
 
-   xattr -cr "/Applications/MakeAGIF v3.1.10.app"
+   xattr -cr "/Applications/MakeAGIF v3.1.11.app"
 
 4. Abrí la app normalmente desde Aplicaciones o Launchpad.
 
@@ -42,7 +42,6 @@ así que no necesitás instalar nada más:
   - ffmpeg + ffprobe  (decodificación de video)
   - gifski            (codificador GIF de alta calidad)
   - img2webp          (codificador WebP, libwebp)
-  - magick            (ImageMagick, rutas alternativas)
 
 Simplemente arrastrá un video a la ventana, elegí GIF o WebP,
 ajustá los settings y hacé clic en Convert.
