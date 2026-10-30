@@ -1,7 +1,13 @@
 # =============================================================================
-# MakeAGIF v3.1.11 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.12 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.12 changelog:
+#   * FIX — Target Size, buffer, FPS and Quality numbers were invisible on
+#     Qt 6.12. A stylesheet border/padding on the spinbox collapsed the editor
+#     to 1px. Those fields keep color only; the box is drawn around them, so
+#     16.00 / 1.50 / 0.50 (and the manual FPS/Quality) show again.
+#
 # v3.1.11 changelog:
 #   * FIX — GIF with "Loop Forever" off failed on gifski 1.32+. The encoder
 #     dropped the old --once flag ("unexpected argument '--once' found") and
@@ -227,9 +233,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.11"
+SCRIPT_VERSION = "v3.1.12"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.11 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.12 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -1195,17 +1201,31 @@ GLOBAL_STYLE = f"""
         border: 1px solid {COLOR_ACCENT_HOVER}; 
     }}
 
-    QLineEdit, QSpinBox, QDoubleSpinBox {{ 
-        background-color: {COLOR_PANEL}; 
-        color: {COLOR_TEXT_BRIGHT}; 
-        border: 1px solid #333; 
-        border-radius: 2px; 
-        padding: 4px; 
-        selection-background-color: {COLOR_ACCENT}; 
-    QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{
+    QLineEdit {{
+        background-color: {COLOR_PANEL};
+        color: {COLOR_TEXT_BRIGHT};
+        border: 1px solid #333;
+        border-radius: 2px;
+        padding: 4px;
+        selection-background-color: {COLOR_ACCENT};
+    }}
+    QLineEdit:disabled {{
         background-color: {COLOR_BG};
         color: #555;
         border: 1px solid #222;
+    }}
+    /* Qt 6.12: `border` or `padding` on QSpinBox/QDoubleSpinBox collapses the
+       editor to 1px, so the number vanishes (Target Size, buffers, FPS,
+       Quality). Color and background are safe. MiniMath draws the box. */
+    QSpinBox, QDoubleSpinBox {{
+        background-color: {COLOR_PANEL};
+        color: {COLOR_TEXT_BRIGHT};
+        selection-background-color: {COLOR_ACCENT};
+        selection-color: {COLOR_TEXT_BRIGHT};
+    }}
+    QSpinBox:disabled, QDoubleSpinBox:disabled {{
+        background-color: {COLOR_BG};
+        color: #555;
     }}
 
     /* Checkboxes — Standardized SQUARE indicators across the whole app */
@@ -7484,15 +7504,27 @@ class Task:
 class MiniMath(QHBoxLayout):
     def __init__(self, label, span, step=0.1):
         super().__init__(); self.setSpacing(2); lbl = QLabel(label); lbl.setStyleSheet("color: #aaa; font-size: 10px;")
-        lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         lbl.setMinimumWidth(20)
         span.setButtonSymbols(span.ButtonSymbols.NoButtons)
-        span.setFixedWidth(58)
+        span.setFrame(False)
+        span.setAlignment(Qt.AlignCenter)
+        span.setFixedWidth(68)
+        # Never put border/padding on the spinbox. Qt 6.12 then sizes the
+        # inner editor to 1px and the value (16.00, 1.50, …) disappears.
+        span.setStyleSheet("background: transparent; color: white;")
+        box = QFrame(); box.setObjectName("minmax_box")
+        box.setStyleSheet(
+            "QFrame#minmax_box { border: 1px solid #2d4050; border-radius: 2px; background: #1a2630; }"
+        )
+        box.setFixedHeight(24)
+        inner = QHBoxLayout(box); inner.setContentsMargins(4, 0, 4, 0); inner.setSpacing(0)
+        inner.addWidget(span)
         bm = QPushButton("−"); bp = QPushButton("+")
         for b in [bm, bp]: 
             b.setFixedSize(20, 20)
             b.setStyleSheet("background: #333; border: 1px solid #666; border-radius: 3px; color: white; font-weight: bold; font-size: 12px; padding: 0px;")
-        self.addWidget(lbl, 1); self.addWidget(bm); self.addWidget(span); self.addWidget(bp)
+        self.addWidget(lbl, 1); self.addWidget(bm); self.addWidget(box); self.addWidget(bp)
         bm.clicked.connect(lambda: span.setValue(span.value() - step)); bp.clicked.connect(lambda: span.setValue(span.value() + step))
 
 class LabeledSnapSlider(QSlider):
@@ -8044,7 +8076,7 @@ class SettingsPanel(QFrame):
         gb_style = f"""
             QGroupBox {{ color: {COLOR_TEXT_BRIGHT}; border: 1px solid #2d4050; background: #0e161b; font-size: 11px; font-weight: bold; margin-top: 15px; border-radius: 4px; }}
             QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; color: {COLOR_ACCENT}; }}
-            QComboBox, QSpinBox, QDoubleSpinBox {{ background: #1a2630; border: 1px solid #2d4050; color: white; }}
+            QComboBox {{ background: #1a2630; border: 1px solid #2d4050; color: white; }}
         """
         self.gb_fmt.setStyleSheet(gb_style)
         v_fmt = QVBoxLayout(self.gb_fmt); v_fmt.setSpacing(6)
@@ -11249,7 +11281,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.11"
+                "MakeAGIF.WEBP.v3.1.12"
             )
         except Exception:
             pass

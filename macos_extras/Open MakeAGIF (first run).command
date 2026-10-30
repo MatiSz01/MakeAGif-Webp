@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# MakeAGIF v3.1.11 — macOS first-run helper
+# MakeAGIF v3.1.12 — macOS first-run helper
 # ==========================================
 # This app is not signed with an Apple Developer certificate, so when you
 # download it macOS marks it as "quarantined" and refuses to open it (it may
@@ -18,14 +18,14 @@
 set +e
 
 echo "────────────────────────────────────────────"
-echo "  MakeAGIF v3.1.11 — first-run helper"
+echo "  MakeAGIF v3.1.12 — first-run helper"
 echo "────────────────────────────────────────────"
 echo ""
 
 # Folder this script lives in (works when double-clicked from Finder).
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-APP_NAME="MakeAGIF v3.1.11.app"
+APP_NAME="MakeAGIF v3.1.12.app"
 
 SRC=""
 # 1) App sitting next to this script (typical after unzipping the download).
@@ -111,7 +111,7 @@ echo "✓ Done."
 
 echo ""
 # ── Step 3: launch ──────────────────────────────────────────────────────────
-echo "→ Launching MakeAGIF v3.1.11…"
+echo "→ Launching MakeAGIF v3.1.12…"
 open "$APP"
 RESULT=$?
 
