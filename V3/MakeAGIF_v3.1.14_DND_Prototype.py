@@ -1,7 +1,15 @@
 # =============================================================================
-# MakeAGIF v3.1.13 — DND Prototype (NLE trim/playhead + frame-exact preview)
+# MakeAGIF v3.1.14 — DND Prototype (NLE trim/playhead + frame-exact preview)
 # =============================================================================
 # Forked from v3.1.4. Performance pass — UI responsiveness, no engine changes.
+# v3.1.14 changelog:
+#   * FIX (macOS) — dropping a video failed with "Could not analyze" and the
+#     console stayed empty. The bundled ffmpeg/ffprobe were Homebrew binaries,
+#     which look for libraries in /opt/homebrew and cannot start on a Mac
+#     without Homebrew. The Mac build now ships static arm64 ffmpeg and
+#     ffprobe. A failed import also writes the real ffprobe/ffmpeg error to
+#     the System Console and to the dialog.
+#
 # v3.1.13 changelog:
 #   * FIX — Auto Optimize buffers no longer boot at 0 MB. Fresh start is
 #     lower 1.50 / upper 0.50, and the fields cannot go below 0.10. A saved
@@ -244,9 +252,9 @@ COLOR_WARNING = "#ffab00"
 COLOR_STATE_INFO = "#1e3a8c"
 
 # --- Constants ---
-SCRIPT_VERSION = "v3.1.13"
+SCRIPT_VERSION = "v3.1.14"
 APP_AUTHOR = "Matias Szteinberg"
-APP_TITLE = f"MakeAGIF/WEBP v3.1.13 — By {APP_AUTHOR}"
+APP_TITLE = f"MakeAGIF/WEBP v3.1.14 — By {APP_AUTHOR}"
 INPROGRESS_SUFFIX = "_INPROGRESS"
 DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gif_tool_py_frame_cache")
 # Scene-detection cache lives in its own folder, intentionally NOT under the
@@ -1554,6 +1562,25 @@ def _probe_stream_frame_stats(path):
         return (None, 0, 0.0)
 
 
+def _remember_probe_error(msg):
+    """Keep the latest reason a probe failed, so the UI can show it.
+
+    Import used to fail with a generic dialog and an empty console, which
+    hid the real cause (on Mac, a Homebrew ffprobe that can't load its
+    libraries)."""
+    global _LAST_PROBE_ERROR
+    msg = (msg or "").strip()
+    if not msg:
+        return
+    if _LAST_PROBE_ERROR:
+        _LAST_PROBE_ERROR = (_LAST_PROBE_ERROR + "\n" + msg)[:1200]
+    else:
+        _LAST_PROBE_ERROR = msg[:1200]
+
+
+_LAST_PROBE_ERROR = ""
+
+
 def _probe_specs_json(path):
     """PR2: gather every spec we need in ONE ffprobe JSON call instead of the
     legacy ``ffmpeg -i`` + 2× ffprobe (three processes). Returns a fully
@@ -1579,6 +1606,11 @@ def _probe_specs_json(path):
             creationflags=0x08000000 if os.name == 'nt' else 0,
         )
         if proc.returncode != 0 or not proc.stdout:
+            detail = (proc.stderr or proc.stdout or "").strip()
+            _remember_probe_error(
+                f"ffprobe failed (exit {proc.returncode}): {FFPROBE_PATH}"
+                + (f"\n{detail}" if detail else "")
+            )
             return None
         data = json.loads(proc.stdout)
         streams = data.get("streams") or []
@@ -1591,6 +1623,9 @@ def _probe_specs_json(path):
         a_fps = _parse_rational(st.get("avg_frame_rate"))
         fps = r_fps or a_fps
         if w <= 0 or h <= 0 or not fps or fps <= 0:
+            _remember_probe_error(
+                f"ffprobe found no usable video stream in the file ({FFPROBE_PATH})"
+            )
             return None
         # Duration: prefer container/format, fall back to the stream entry.
         dur = 0.0
@@ -1624,7 +1659,8 @@ def _probe_specs_json(path):
             "err": False, "is_vfr": is_vfr, "r_fps": r_fps, "avg_fps": a_fps,
             "fps_display": format_fps_for_display(fps),
         }
-    except Exception:
+    except Exception as exc:
+        _remember_probe_error(f"ffprobe could not run ({FFPROBE_PATH}): {exc}")
         return None
 
 
@@ -1634,8 +1670,14 @@ def get_video_specs(path):
              # VFR detection results — populated below; kept on specs so
              # downstream code (trim dialog, engine logs) can read them
              # without re-probing.
-             "is_vfr": False, "r_fps": None, "avg_fps": None}
-    if not os.path.exists(path): return specs
+             "is_vfr": False, "r_fps": None, "avg_fps": None,
+             "probe_error": ""}
+    if not os.path.exists(path):
+        specs["probe_error"] = "File not found."
+        return specs
+
+    global _LAST_PROBE_ERROR
+    _LAST_PROBE_ERROR = ""
 
     # PR2 fast path: a single ffprobe JSON call. Falls through to the legacy
     # ffmpeg+ffprobe pipeline below if ffprobe is missing or returns nothing
@@ -1657,12 +1699,14 @@ def get_video_specs(path):
                 proc.communicate(timeout=2)
             except Exception:
                 pass
+            _remember_probe_error(f"ffmpeg timed out ({FFMPEG_PATH})")
+            specs["probe_error"] = _LAST_PROBE_ERROR or "ffmpeg timed out."
             return specs
-        m_r = re.search(r",\s*(\d{2,})x(\d{2,})", err)
+        m_r = re.search(r",\s*(\d{2,})x(\d{2,})", err or "")
         if m_r: specs["w"], specs["h"] = int(m_r.group(1)), int(m_r.group(2))
-        m_f = re.search(r"(\d+(?:\.\d+)?)\s*fps", err)
+        m_f = re.search(r"(\d+(?:\.\d+)?)\s*fps", err or "")
         if m_f: specs["fps"] = float(m_f.group(1))
-        m_d = re.search(r"Duration:\s*(\d{2}:\d{2}:\d{2})\.(\d{2})", err)
+        m_d = re.search(r"Duration:\s*(\d{2}:\d{2}:\d{2})\.(\d{2})", err or "")
         if m_d:
             specs["dur"] = m_d.group(1)
             h, m, s = map(int, m_d.group(1).split(':'))
@@ -1670,7 +1714,12 @@ def get_video_specs(path):
             specs["duration"] = dur_sec
             specs["t_frames"] = int(dur_sec * specs["fps"])
         if specs["w"] > 0: specs["err"] = False
-    except Exception:
+        elif (err or "").strip():
+            _remember_probe_error(
+                f"ffmpeg could not read the file ({FFMPEG_PATH}):\n{(err or '').strip()[:600]}"
+            )
+    except Exception as exc:
+        _remember_probe_error(f"ffmpeg could not run ({FFMPEG_PATH}): {exc}")
         # Ensure no zombie ffmpeg lingers on unexpected failures.
         if proc and proc.poll() is None:
             try: proc.kill()
@@ -1695,6 +1744,10 @@ def get_video_specs(path):
                     specs["t_frames"] = int(round(pr_dur * specs["fps"]))
         if specs["fps"] > 0:
             specs["fps_display"] = format_fps_for_display(specs["fps"])
+    if specs["err"]:
+        specs["probe_error"] = _LAST_PROBE_ERROR or (
+            f"Could not read a video stream ({FFPROBE_PATH})."
+        )
     return specs
 
 def parse_trim_to_seconds(val, default=0.0, fps=None):
@@ -7519,7 +7572,8 @@ class TaskAnalyzerWorker(QThread):
                          "name_settings": True}
             task.specs = get_video_specs(self._path)
             if task.specs.get("err"):
-                self.failed.emit(self._path, "Could not analyze the dropped video file.")
+                detail = task.specs.get("probe_error") or "Could not analyze the dropped video file."
+                self.failed.emit(self._path, detail)
             else:
                 self.finished.emit(task)
         except Exception as exc:
@@ -10762,6 +10816,14 @@ class MainWindow(QMainWindow):
         self.update_make_button()
         self._update_resolved_path()
 
+    def _log(self, msg):
+        """Write a line to the System Console. Import failures used to show
+        only a dialog, so the console the user opened stayed blank."""
+        try:
+            self.view.append(str(msg))
+        except Exception:
+            pass
+
     def _on_single_import_failed(self, path, msg):
         self._import_worker = None
         self.current_single_task = None
@@ -10773,6 +10835,7 @@ class MainWindow(QMainWindow):
         self.settings.t_end.setEnabled(False)
         self.settings.go_btn.setEnabled(True)
         self.settings.lbl_status.setText("READY")
+        self._log(f"Import failed: {os.path.basename(path)}\n{msg}")
         QMessageBox.warning(self, "Invalid File",
                             f"Could not analyze the dropped video file:\n{os.path.basename(path)}\n\n{msg}")
 
@@ -10871,6 +10934,7 @@ class MainWindow(QMainWindow):
             f"color: {COLOR_DANGER}; font-style: italic; font-size: 10px; "
             f"padding: 2px 4px; background: #1a0000; border-radius: 3px;"
         )
+        self._log(f"Import failed: {os.path.basename(path)}\n{msg}")
 
     def add_to_batch(self, task):
         self.queue_data.append(task)
@@ -11336,7 +11400,7 @@ if __name__ == "__main__":
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "MakeAGIF.WEBP.v3.1.13"
+                "MakeAGIF.WEBP.v3.1.14"
             )
         except Exception:
             pass
